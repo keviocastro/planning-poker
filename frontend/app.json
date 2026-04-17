@@ -2,6 +2,7 @@
   "expo": {
     "name": "Planning Poker",
     "slug": "planning-poker-app",
+    "owner": "keviocastro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
