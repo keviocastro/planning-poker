@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const axios = require('axios');
 
 const app = express();
 app.use(cors());
@@ -55,6 +56,73 @@ io.on('connection', (socket) => {
     if (rooms[roomId]) {
       rooms[roomId].storyTitle = title;
       io.to(roomId).emit('room_update', rooms[roomId]);
+    }
+  });
+
+  socket.on('fetch_jira_issue', async ({ domain, email, token, issueKey }) => {
+    try {
+      // Sanitize domain: remove https://, http:// and trailing slashes
+      const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const auth = Buffer.from(`${email}:${token}`).toString('base64');
+      const response = await axios.get(`https://${cleanDomain}/rest/api/3/issue/${issueKey}`, {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      const { key, fields } = response.data;
+      socket.emit('jira_issue_data', {
+        key,
+        summary: fields.summary,
+        description: fields.description?.content?.[0]?.content?.[0]?.text || ''
+      });
+    } catch (error) {
+      console.error('Jira fetch error:', error?.response?.data || error.message);
+      socket.emit('jira_error', error?.response?.data?.errorMessages?.[0] || error.message);
+    }
+  });
+
+  socket.on('fetch_jira_fields', async ({ domain, email, token }) => {
+    try {
+      const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const auth = Buffer.from(`${email}:${token}`).toString('base64');
+      const response = await axios.get(`https://${cleanDomain}/rest/api/3/field`, {
+        headers: { 'Authorization': `Basic ${auth}`, 'Accept': 'application/json' }
+      });
+      
+      // Filter fields that usually represent estimates or story points
+      const estimateFields = response.data.filter(f => 
+        f.name.toLowerCase().includes('point') || 
+        f.name.toLowerCase().includes('estimate') ||
+        f.name.toLowerCase().includes('complexity') ||
+        (f.schema && (f.schema.type === 'number' || f.schema.custom === 'com.atlassian.jira.plugin.system.customfieldtypes:float'))
+      ).map(f => ({ id: f.id, name: f.name }));
+
+      socket.emit('jira_fields_data', estimateFields);
+    } catch (error) {
+      socket.emit('jira_error', 'Failed to fetch fields: ' + error.message);
+    }
+  });
+
+  socket.on('update_jira_estimate', async ({ domain, email, token, issueKey, fieldId, value }) => {
+    try {
+      const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      const auth = Buffer.from(`${email}:${token}`).toString('base64');
+      
+      // Clean value to be a number if it's a numeric field
+      const numericValue = parseFloat(value);
+      
+      await axios.put(`https://${cleanDomain}/rest/api/3/issue/${issueKey}`, {
+        fields: { [fieldId]: numericValue }
+      }, {
+        headers: { 'Authorization': `Basic ${auth}`, 'Accept': 'application/json', 'Content-Type': 'application/json' }
+      });
+      
+      socket.emit('jira_update_success', issueKey);
+    } catch (error) {
+      console.error('Jira update error:', error?.response?.data || error.message);
+      socket.emit('jira_error', 'Jira Update Failed: ' + (error?.response?.data?.errors?.[fieldId] || error.message));
     }
   });
 

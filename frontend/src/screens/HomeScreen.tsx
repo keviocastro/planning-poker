@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useIntl } from 'react-intl';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type RootStackParamList = {
   Home: undefined;
@@ -17,14 +18,41 @@ export default function HomeScreen() {
   const [roomId, setRoomId] = useState('');
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
-  const handleJoin = () => {
+  useEffect(() => {
+    loadSavedData();
+  }, []);
+
+  const loadSavedData = async () => {
+    try {
+      const savedName = await AsyncStorage.getItem('user_name');
+      if (savedName) setUserName(savedName);
+
+      // Check if user was previously in a room (for web F5 support)
+      if (Platform.OS === 'web') {
+        const lastRoom = await AsyncStorage.getItem('last_room_id');
+        if (lastRoom && savedName) {
+          navigation.navigate('Room', { roomId: lastRoom, userName: savedName });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load saved data', e);
+    }
+  };
+
+  const handleJoin = async () => {
     if (!userName.trim()) {
       Alert.alert(intl.formatMessage({ id: 'home.nameError' }));
       return;
     }
     
-    const finalRoomId = roomId.trim() || Math.random().toString(36).substring(7).toUpperCase();
-    navigation.navigate('Room', { roomId: finalRoomId, userName });
+    try {
+      const finalRoomId = roomId.trim() || Math.random().toString(36).substring(7).toUpperCase();
+      await AsyncStorage.setItem('user_name', userName.trim());
+      await AsyncStorage.setItem('last_room_id', finalRoomId);
+      navigation.navigate('Room', { roomId: finalRoomId, userName: userName.trim() });
+    } catch (e) {
+      console.error('Failed to save session', e);
+    }
   };
 
   return (
