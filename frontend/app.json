@@ -3,6 +3,7 @@
     "name": "Planning Poker",
     "slug": "planning-poker-app",
     "owner": "keviocastro",
+    "primaryColor": "#4A90E2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -32,6 +33,11 @@
     },
     "plugins": [
       "expo-localization"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "599bd2a2-dfd7-4645-8fc6-0d6fdbd7feb2"
+      }
+    }
   }
 }
